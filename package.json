@@ -2,9 +2,8 @@
 {
   "name": "ashley-router",
   "version": "1.0.0",
-  "main": "index.js",
-  "license": "MIT",
+  "type": "module",
   "dependencies": {
-    "openai": "^4.26.0"
+    "openai": "^4.27.0"
   }
 }
