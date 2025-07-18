@@ -11,9 +11,9 @@ const assistantIDs = {
   "Your Personal Meal Planner": "asst_YNInGDhCWN2F4KZvl29VgApI"
 };
 
-// Use a static thread ID to simulate persistent memory for Scott
 let scottThreadId = null;
 let routedThreads = {};
+let routedAlready = false;
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
@@ -26,6 +26,7 @@ module.exports = async (req, res) => {
     if (!scottThreadId) {
       const thread = await openai.beta.threads.create();
       scottThreadId = thread.id;
+      routedAlready = false;
     }
 
     await openai.beta.threads.messages.create(scottThreadId, {
@@ -46,42 +47,46 @@ module.exports = async (req, res) => {
     const messages = await openai.beta.threads.messages.list(scottThreadId);
     const ashleyMessage = messages.data[0].content[0].text.value;
 
-    let routedAssistant = null;
-    if (/video|script|reels|tiktok/i.test(message)) {
-      routedAssistant = assistantIDs["Viral S.F. Video Scripts"];
-    } else if (/food|calories|meal|macros|nutrition/i.test(message)) {
-      routedAssistant = assistantIDs["Your Personal Meal Planner"];
-    }
-
     let finalReply = ashleyMessage;
 
-    if (routedAssistant) {
-      if (!routedThreads[routedAssistant]) {
-        const newThread = await openai.beta.threads.create();
-        routedThreads[routedAssistant] = newThread.id;
+    if (!routedAlready) {
+      let routedAssistant = null;
+      if (/video|script|reels|tiktok/i.test(message)) {
+        routedAssistant = assistantIDs["Viral S.F. Video Scripts"];
+      } else if (/food|calories|meal|macros|nutrition|fat loss/i.test(message)) {
+        routedAssistant = assistantIDs["Your Personal Meal Planner"];
       }
 
-      await openai.beta.threads.messages.create(routedThreads[routedAssistant], {
-        role: "user",
-        content: message,
-      });
+      if (routedAssistant) {
+        routedAlready = true;
 
-      const routedRun = await openai.beta.threads.runs.create(routedThreads[routedAssistant], {
-        assistant_id: routedAssistant,
-      });
+        if (!routedThreads[routedAssistant]) {
+          const newThread = await openai.beta.threads.create();
+          routedThreads[routedAssistant] = newThread.id;
+        }
 
-      let routedStatus;
-      do {
-        await new Promise((res) => setTimeout(res, 1500));
-        routedStatus = await openai.beta.threads.runs.retrieve(routedThreads[routedAssistant], routedRun.id);
-      } while (routedStatus.status !== "completed");
+        await openai.beta.threads.messages.create(routedThreads[routedAssistant], {
+          role: "user",
+          content: message,
+        });
 
-      const routedMessages = await openai.beta.threads.messages.list(routedThreads[routedAssistant]);
-      const routedReply = routedMessages.data[0].content[0].text.value;
+        const routedRun = await openai.beta.threads.runs.create(routedThreads[routedAssistant], {
+          assistant_id: routedAssistant,
+        });
 
-      finalReply = `${ashleyMessage}
+        let routedStatus;
+        do {
+          await new Promise((res) => setTimeout(res, 1500));
+          routedStatus = await openai.beta.threads.runs.retrieve(routedThreads[routedAssistant], routedRun.id);
+        } while (routedStatus.status !== "completed");
+
+        const routedMessages = await openai.beta.threads.messages.list(routedThreads[routedAssistant]);
+        const routedReply = routedMessages.data[0].content[0].text.value;
+
+        finalReply = `${ashleyMessage}
 
 ➡️ ${routedReply}`;
+      }
     }
 
     res.status(200).json({ response: finalReply });
